@@ -22,7 +22,10 @@ async fn metrics(c: Data<Manager>, _req: HttpRequest) -> impl Responder {
 
 #[get("/pubkey")]
 async fn pubkey(c: Data<Manager>, _req: HttpRequest) -> impl Responder {
-    let sk = SecretKey::from_bytes(&*base64::decode(std::env::var("ARCANUM_VLT_TOKEN").unwrap()).unwrap()).unwrap();
+    let sk = SecretKey::from_bytes(
+        &*base64::decode(std::env::var("ARCANUM_VLT_TOKEN").unwrap()).unwrap(),
+    )
+    .unwrap();
     let pk = PublicKey::from_secret(&sk);
     HttpResponse::Ok().body(base64::encode(pk.as_bytes()))
 }
@@ -40,6 +43,15 @@ async fn index(c: Data<Manager>, _req: HttpRequest) -> impl Responder {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    let logger = tracing_subscriber::fmt::layer().json();
+    let env_filter = EnvFilter::try_from_default_env()
+        .or_else(|_| EnvFilter::try_new("info"))
+        .unwrap();
+    let collector = Registry::default().with(logger).with(env_filter);
+
+    // Initialize tracing
+    tracing::subscriber::set_global_default(collector).unwrap();
+
     // Start kubernetes controller
     let (manager, drainer) = Manager::new().await;
 

@@ -1,5 +1,5 @@
 use crate::Error::ArcanumError;
-use crate::{AppConfig, Error, Result};
+use crate::{telemetry, AppConfig, Error, Result};
 use chrono::prelude::*;
 use ecies_ed25519::SecretKey;
 use futures::{future::BoxFuture, FutureExt, StreamExt};
@@ -70,7 +70,7 @@ fn get_from_vault(
 ) -> Result<serde_json::map::Map<String, Value>, Error> {
     let host = &ctx.get_ref().config.host;
     let token = &ctx.get_ref().config.token;
-    let client = hashicorp_vault::Client::new(host, token).unwrap();
+    let client = hashicorp_vault::Client::new(host, token)?;
     let res: hashicorp_vault::client::error::Result<Value> =
         client.get_custom_secret(format!("{}/{}", ns, name));
 
@@ -90,7 +90,7 @@ fn set_in_vault(
 ) -> Result<(), Error> {
     let host = &ctx.get_ref().config.host;
     let token = &ctx.get_ref().config.token;
-    let client = hashicorp_vault::Client::new(host, token).unwrap();
+    let client = hashicorp_vault::Client::new(host, token)?;
     let data = data
         .iter()
         .map(|x| (x.0, std::str::from_utf8(&*x.1 .0).unwrap()))
@@ -119,6 +119,8 @@ fn decrypt(key: &SecretKey, data: Vec<u8>) -> Result<Vec<u8>, Error> {
 
 #[instrument(skip(ctx), fields(trace_id))]
 async fn reconcile(foo: SyncedSecret, ctx: Context<Data>) -> Result<ReconcilerAction, Error> {
+    let trace_id = telemetry::get_trace_id();
+    Span::current().record("trace_id", &field::display(&trace_id));
     let start = Instant::now();
 
     let client = ctx.get_ref().client.clone();
@@ -137,7 +139,8 @@ async fn reconcile(foo: SyncedSecret, ctx: Context<Data>) -> Result<ReconcilerAc
     match secret_vlt {
         Ok(s) => {
             // Update the secret with the contents of Vault.
-            let to_create = s.iter()
+            let to_create = s
+                .iter()
                 .map(|x| {
                     (
                         x.0.clone(),
@@ -196,7 +199,7 @@ async fn reconcile(foo: SyncedSecret, ctx: Context<Data>) -> Result<ReconcilerAc
                     set_in_vault(&ctx, &ns, &name, data)?;
                 }
             } else {
-                return Err(e)
+                return Err(e);
             }
         }
     }

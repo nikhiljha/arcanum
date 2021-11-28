@@ -32,6 +32,9 @@ pub use manager::Manager;
 /// generated resource type (for crdgen)
 pub use manager::SyncedSecret;
 
+/// logging
+pub mod telemetry;
+
 /// controller configuration
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
 struct AppConfig {

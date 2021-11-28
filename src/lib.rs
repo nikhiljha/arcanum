@@ -32,9 +32,6 @@ pub use manager::Manager;
 /// generated resource type (for crdgen)
 pub use manager::SyncedSecret;
 
-/// log and trace integrations
-pub mod telemetry;
-
 /// controller configuration
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
 struct AppConfig {
@@ -42,15 +39,4 @@ struct AppConfig {
     host: String,
     token: String,
     path: String,
-}
-
-impl ::std::default::Default for AppConfig {
-    fn default() -> Self {
-        Self {
-            version: 0,
-            host: "http://localhost:8200".to_string(),
-            token: "test12345".to_string(),
-            path: "secret/".to_string(),
-        }
-    }
 }

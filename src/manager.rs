@@ -1,5 +1,5 @@
 use crate::Error::ArcanumError;
-use crate::{telemetry, AppConfig, Error, Result};
+use crate::{AppConfig, Error, Result};
 use chrono::prelude::*;
 use ecies_ed25519::SecretKey;
 use futures::{future::BoxFuture, FutureExt, StreamExt};
@@ -17,8 +17,8 @@ use kube::{
     CustomResource, Resource,
 };
 use prometheus::{
-    default_registry, proto::MetricFamily, register_histogram_vec, register_int_counter, HistogramOpts,
-    HistogramVec, IntCounter,
+    default_registry, proto::MetricFamily, register_histogram_vec, register_int_counter,
+    HistogramOpts, HistogramVec, IntCounter,
 };
 use rand::Rng;
 use schemars::JsonSchema;
@@ -119,97 +119,86 @@ fn decrypt(key: &SecretKey, data: Vec<u8>) -> Result<Vec<u8>, Error> {
 
 #[instrument(skip(ctx), fields(trace_id))]
 async fn reconcile(foo: SyncedSecret, ctx: Context<Data>) -> Result<ReconcilerAction, Error> {
-    let trace_id = telemetry::get_trace_id();
-    Span::current().record("trace_id", &field::display(&trace_id));
     let start = Instant::now();
 
     let client = ctx.get_ref().client.clone();
     ctx.get_ref().state.write().await.last_event = Utc::now();
     let name = ResourceExt::name(&foo);
     let ns = ResourceExt::namespace(&foo).expect("syncedsecret is namespaced");
-    // let syncedsecrets: Api<SyncedSecret> = Api::namespaced(client.clone(), &ns);
     let secrets: Api<Secret> = Api::namespaced(client, &ns);
 
     let secret_obj = secrets.get(&name).await;
     let secret_vlt = get_from_vault(&ctx, &ns, &name);
     let keypair: SecretKey =
-        SecretKey::from_bytes(&*base64::decode(std::env::var("ARCANUM_ENC_KEY").unwrap()).unwrap()).unwrap();
+        SecretKey::from_bytes(&*base64::decode(std::env::var("ARCANUM_ENC_KEY").unwrap()).unwrap())
+            .unwrap();
 
-    let x = match secret_obj {
+    let owner_reference = object_to_owner_reference::<SyncedSecret>(foo.metadata.clone())?;
+    match secret_vlt {
         Ok(s) => {
-            if secret_vlt.is_err() {
-                let data = match s.data {
-                    None => {
-                        let x: BTreeMap<String, ByteString> = BTreeMap::new();
-                        x
-                    }
-                    Some(s) => s,
-                };
-                set_in_vault(&ctx, &ns, &name, data)?;
-            }
-            (secret_vlt?, true)
+            // Update the secret with the contents of Vault.
+            let to_create = s.iter()
+                .map(|x| {
+                    (
+                        x.0.clone(),
+                        ByteString(Vec::from(x.1.as_str().unwrap().as_bytes())),
+                    )
+                })
+                .collect::<BTreeMap<String, ByteString>>();
+            let secret_obj = Secret {
+                data: Some(to_create),
+                metadata: ObjectMeta {
+                    name: Some(name.clone()),
+                    owner_references: Some(vec![owner_reference.clone()]),
+                    ..ObjectMeta::default()
+                },
+                // TODO: type_
+                ..Secret::default()
+            };
+            secrets
+                .patch(
+                    &name,
+                    &PatchParams::apply("arcanum.njha.dev"),
+                    &Patch::Apply(&secret_obj),
+                )
+                .await
+                .unwrap();
         }
-        Err(_) => {
-            if secret_vlt.is_ok() {
-                (secret_vlt?, true)
-            } else {
-                let foospec: SyncedSecretSpec = foo.spec;
-                let unsealed = foospec
+        Err(e) => {
+            if secret_obj.is_err() {
+                // Unseal the secret, try to create it, then push to vault.
+                let spec: SyncedSecretSpec = foo.spec;
+                let unsealed = spec
                     .data
                     .iter()
                     .map(|x| {
                         (
                             x.0.clone(),
-                            serde_json::Value::String(
-                                std::str::from_utf8(&*decrypt(&keypair, base64::decode(x.1).unwrap()).unwrap())
-                                    .unwrap()
-                                    .parse()
-                                    .unwrap(),
-                            ),
+                            ByteString(decrypt(&keypair, base64::decode(x.1).unwrap()).unwrap()),
                         )
                     })
                     .collect();
-                (unsealed, false)
+                let secret_obj = Secret {
+                    data: Some(unsealed),
+                    metadata: ObjectMeta {
+                        name: Some(name.clone()),
+                        owner_references: Some(vec![owner_reference.clone()]),
+                        ..ObjectMeta::default()
+                    },
+                    // TODO: type_
+                    ..Secret::default()
+                };
+                secrets
+                    .create(&PostParams::default(), &secret_obj)
+                    .await
+                    .unwrap();
+                if let Some(data) = secret_obj.data {
+                    set_in_vault(&ctx, &ns, &name, data)?;
+                }
+            } else {
+                return Err(e)
             }
         }
-    };
-    let to_create = x.0;
-    let apply_fn = x.1;
-
-    let to_create = to_create
-        .iter()
-        .map(|x| {
-            (
-                x.0.clone(),
-                ByteString(Vec::from(x.1.as_str().unwrap().as_bytes())),
-            )
-        })
-        .collect::<BTreeMap<String, ByteString>>();
-
-    let owner_reference = object_to_owner_reference::<SyncedSecret>(foo.metadata.clone())?;
-    let secret_obj = Secret {
-        data: Some(to_create),
-        metadata: ObjectMeta {
-            name: Some(name.clone()),
-            owner_references: Some(vec![owner_reference.clone()]),
-            ..ObjectMeta::default()
-        },
-        // TODO: type_
-        // type_: Re,
-        ..Secret::default()
-    };
-
-    if apply_fn {
-        secrets
-            .patch(
-                &name,
-                &PatchParams::apply("arcanum.njha.dev"),
-                &Patch::Apply(&secret_obj),
-            )
-            .await
-            .unwrap();
-    } else {
-        secrets.create(&PostParams::default(), &secret_obj).await.unwrap();
     }
 
     let duration = start.elapsed().as_millis() as f64 / 1000.0;
@@ -224,7 +213,7 @@ async fn reconcile(foo: SyncedSecret, ctx: Context<Data>) -> Result<ReconcilerAc
     // If no events were received, check back every 3..5 minutes
     let mut rng = rand::thread_rng();
     Ok(ReconcilerAction {
-        requeue_after: Some(Duration::from_secs(rng.gen_range((3*60)..(5*60)))),
+        requeue_after: Some(Duration::from_secs(rng.gen_range((3 * 60)..(5 * 60)))),
     })
 }
 
@@ -253,7 +242,11 @@ impl Metrics {
         .unwrap();
 
         Metrics {
-            handled_events: register_int_counter!("foo_controller_handled_events", "handled events").unwrap(),
+            handled_events: register_int_counter!(
+                "foo_controller_handled_events",
+                "handled events"
+            )
+            .unwrap(),
             reconcile_duration: reconcile_histogram,
         }
     }
@@ -309,10 +302,9 @@ impl Manager {
 
         let foos = Api::<SyncedSecret>::all(client);
         // Ensure CRD is installed before loop-watching
-        let _r = foos
-            .list(&ListParams::default().limit(1))
-            .await
-            .expect("is the crd installed? please run: cargo run --bin crdgen | kubectl apply -f -");
+        let _r = foos.list(&ListParams::default().limit(1)).await.expect(
+            "is the crd installed? please run: cargo run --bin crdgen | kubectl apply -f -",
+        );
 
         // All good. Start controller and return its future.
         let drainer = Controller::new(foos, ListParams::default())

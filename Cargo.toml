@@ -11,12 +11,8 @@ name = "arcanum"
 path = "src/main.rs"
 
 [[bin]]
-name = "arcanum-crdgen"
-path = "src/crdgen.rs"
-
-[[bin]]
-name = "arcanum-seal"
-path = "src/sealer.rs"
+name = "arcanum-cli"
+path = "src/cli.rs"
 
 [lib]
 name = "arcanum"
@@ -46,17 +42,11 @@ prometheus = "0.13.0"
 # Can't upgrade this until opentelemetry-otlp upgrades it
 tonic = { version = "0.5.2", optional = true }
 hashicorp_vault = "2.1.0"
-ed25519-dalek = "1.0.1"
-confy = "0.4.0"
 base64 = "0.13.0"
-crypto_box = "0.7.0"
 ecies-ed25519 = "0.5.1"
 rand_core = "0.5.1"
 rand = "0.8.4"
-
-# exemplar support (broken atm)
-#prometheus = { git = "https://github.com/clux/rust-prometheus.git", rev = "c9f7ea9652e27cd2d872937c5efbe72f20db0d5e" }
-#prometheus = { path = "../rust-prometheus" }
+clap = "2.33.3"
 
 [dependencies.kube]
 features = ["runtime", "client", "derive"]

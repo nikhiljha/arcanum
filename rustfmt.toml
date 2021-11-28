@@ -1,11 +1,11 @@
-overflow_delimited_expr = true
-newline_style = "Unix"
+condense_wildcard_suffixes = true
+format_strings = true
 imports_granularity = "Crate"
+newline_style = "Unix"
+normalize_comments = true
+normalize_doc_attributes = true
+overflow_delimited_expr = true
 reorder_impl_items = true
-fn_single_line = false
-blank_lines_upper_bound = 2
-ignore = [
-]
-comment_width = 110
-max_width = 110
-inline_attribute_width = 80
+group_imports = "StdExternalCrate"
+use_try_shorthand = true
+wrap_comments = true

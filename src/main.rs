@@ -22,10 +22,9 @@ async fn metrics(c: Data<Manager>, _req: HttpRequest) -> impl Responder {
 
 #[get("/pubkey")]
 async fn pubkey(c: Data<Manager>, _req: HttpRequest) -> impl Responder {
-    let sk = SecretKey::from_bytes(
-        &*base64::decode(std::env::var("ARCANUM_VLT_TOKEN").unwrap()).unwrap(),
-    )
-    .unwrap();
+    let sk =
+        SecretKey::from_bytes(&*base64::decode(std::env::var("ARCANUM_ENC_KEY").unwrap()).unwrap())
+            .unwrap();
     let pk = PublicKey::from_secret(&sk);
     HttpResponse::Ok().body(base64::encode(pk.as_bytes()))
 }
@@ -63,6 +62,7 @@ async fn main() -> Result<()> {
             .service(index)
             .service(health)
             .service(metrics)
+            .service(pubkey)
     })
     .bind("0.0.0.0:8080")
     .expect("bind to 0.0.0.0:8080")

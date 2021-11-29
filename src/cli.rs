@@ -24,14 +24,14 @@ fn main() {
 
     let mut csprng = rand_core::OsRng;
 
-    if let Some(matches) = matches.subcommand_matches("gencrd") {
+    if let Some(_) = matches.subcommand_matches("gencrd") {
         print!(
             "{}",
             serde_yaml::to_string(&arcanum::SyncedSecret::crd()).unwrap()
         )
     }
 
-    if let Some(matches) = matches.subcommand_matches("genkey") {
+    if let Some(_) = matches.subcommand_matches("genkey") {
         let (secret, public) = ecies_ed25519::generate_keypair(&mut csprng);
         println!(
             "export ARCANUM_PUB_KEY={}",
@@ -44,11 +44,10 @@ fn main() {
     }
 
     if let Some(matches) = matches.subcommand_matches("encrypt") {
-        let secret = ecies_ed25519::SecretKey::from_bytes(
-            &*base64::decode(std::env::var("ARCANUM_ENC_KEY").unwrap()).unwrap(),
+        let public = ecies_ed25519::PublicKey::from_bytes(
+            &*base64::decode(std::env::var("ARCANUM_PUB_KEY").unwrap()).unwrap(),
         )
         .unwrap();
-        let public = ecies_ed25519::PublicKey::from_secret(&secret);
         println!(
             "{}",
             base64::encode(

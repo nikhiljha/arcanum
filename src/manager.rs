@@ -37,7 +37,12 @@ use tracing::{debug, error, event, field, info, instrument, trace, warn, Level, 
 
 /// Our Foo custom resource spec
 #[derive(CustomResource, Deserialize, Serialize, Clone, Debug, JsonSchema)]
-#[kube(kind = "SyncedSecret", group = "njha.dev", version = "v1", namespaced)]
+#[kube(
+    kind = "SyncedSecret",
+    group = "arcanum.njha.dev",
+    version = "v1",
+    namespaced
+)]
 #[kube(status = "SyncedSecretStatus")]
 pub struct SyncedSecretSpec {
     data: HashMap<String, String>,
@@ -190,14 +195,32 @@ async fn reconcile(foo: SyncedSecret, ctx: Context<Data>) -> Result<ReconcilerAc
                     // TODO: type_
                     ..Secret::default()
                 };
-                secrets
-                    .create(&PostParams::default(), &secret_obj)
-                    .await?;
+                secrets.create(&PostParams::default(), &secret_obj).await?;
                 if let Some(data) = secret_obj.data {
                     set_in_vault(&ctx, &ns, &name, data)?;
                 }
             } else {
-                return Err(e);
+                match e {
+                    Error::VaultError(f) => {
+                        match f {
+                            hashicorp_vault::Error::VaultResponse(_s, r) => {
+                                if r.status().as_u16() == 404 {
+                                    // Push to vault.
+                                    if let Some(data) = secret_obj.unwrap().data {
+                                        set_in_vault(&ctx, &ns, &name, data)?;
+                                    }
+                                }
+                            }
+                            _ => {
+                                return Err(f.into())
+                            }
+                        }
+                    }
+                    _ => {
+                        return Err(e.into())
+                    }
+                }
+
             }
         }
     }
@@ -304,7 +327,7 @@ impl Manager {
         let foos = Api::<SyncedSecret>::all(client);
         // Ensure CRD is installed before loop-watching
         let _r = foos.list(&ListParams::default().limit(1)).await.expect(
-            "is the crd installed? please run: cargo run --bin crdgen | kubectl apply -f -",
+            "is the crd installed? please run: arcanum-cli gencrd | kubectl apply -f -",
         );
 
         // All good. Start controller and return its future.

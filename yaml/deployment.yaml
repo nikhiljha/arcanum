@@ -14,7 +14,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: arcanum-cr
 rules:
-  - apiGroups: ["njha.dev"]
+  - apiGroups: ["arcanum.njha.dev"]
     resources: ["syncedsecrets", "syncedsecrets/status"]
     verbs:
     - get
@@ -86,7 +86,7 @@ spec:
       serviceAccountName: arcanum-sa
       containers:
       - name: arcanum
-        image: njha/arcanum
+        image: ghcr.io/nikhiljha/arcanum:v0.1.0
         env:
           - name: ARCANUM_VLT_HOST
             valueFrom:

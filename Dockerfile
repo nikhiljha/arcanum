@@ -4,10 +4,9 @@ WORKDIR ./volume
 COPY ./Cargo.toml ./Cargo.toml
 COPY ./Cargo.lock ./Cargo.lock
 COPY ./src ./src
-RUN cargo build
+RUN cargo build --release
 
-FROM alpine:3.14
-RUN apk add --no-cache musl musl-dev openssl openssl-dev
-COPY --from=builder /volume/volume/target/x86_64-unknown-linux-musl/debug/arcanum /app/
+FROM gcr.io/distroless/static:nonroot
+COPY --from=builder /volume/volume/target/x86_64-unknown-linux-musl/release/arcanum /app/
 EXPOSE 8080
 CMD ["/app/arcanum"]

@@ -164,8 +164,7 @@ async fn reconcile(foo: SyncedSecret, ctx: Context<Data>) -> Result<ReconcilerAc
                     &PatchParams::apply("arcanum.njha.dev"),
                     &Patch::Apply(&secret_obj),
                 )
-                .await
-                .unwrap();
+                .await?;
         }
         Err(e) => {
             if secret_obj.is_err() {
@@ -193,8 +192,7 @@ async fn reconcile(foo: SyncedSecret, ctx: Context<Data>) -> Result<ReconcilerAc
                 };
                 secrets
                     .create(&PostParams::default(), &secret_obj)
-                    .await
-                    .unwrap();
+                    .await?;
                 if let Some(data) = secret_obj.data {
                     set_in_vault(&ctx, &ns, &name, data)?;
                 }

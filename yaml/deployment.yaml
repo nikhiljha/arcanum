@@ -3,8 +3,8 @@
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: arcanum
-  namespace: default
+  name: arcanum-sa
+  namespace: arcanum
 automountServiceAccountToken: true
 
 ---
@@ -24,6 +24,9 @@ rules:
   - apiGroups: ["events.k8s.io"]
     resources: ["events"]
     verbs: ["create"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["create", "patch"]
 
 ---
 # Binding the role to the account in default
@@ -33,7 +36,7 @@ metadata:
   name: arcanum-binding
 subjects:
 - kind: ServiceAccount
-  namespace: default
+  namespace: arcanum
   name: arcanum-sa
 roleRef:
   kind: ClusterRole
@@ -46,7 +49,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: arcanum
-  namespace: default
+  namespace: arcanum
   labels:
     app: arcanum
 spec:
@@ -64,7 +67,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: arcanum
-  namespace: default
+  namespace: arcanum
   labels:
     app: arcanum
 spec:
@@ -84,7 +87,28 @@ spec:
       containers:
       - name: arcanum
         image: njha/arcanum
-        imagePullPolicy: Always
+        env:
+          - name: ARCANUM_VLT_HOST
+            valueFrom:
+              secretKeyRef:
+                name: arcanum-secret
+                key: ARCANUM_VLT_HOST
+          - name: ARCANUM_VLT_PATH
+            valueFrom:
+              secretKeyRef:
+                name: arcanum-secret
+                key: ARCANUM_VLT_PATH
+          - name: ARCANUM_VLT_TOKEN
+            valueFrom:
+              secretKeyRef:
+                name: arcanum-secret
+                key: ARCANUM_VLT_TOKEN
+          - name: ARCANUM_ENC_KEY
+            valueFrom:
+              secretKeyRef:
+                name: arcanum-secret
+                key: ARCANUM_ENC_KEY
+        imagePullPolicy: IfNotPresent
         resources:
           limits:
             cpu: 200m
